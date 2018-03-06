@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# Fixed template url's
+# Fixed api to accept code to return a 201 for post request
+# Added requirements.txt
+# Fixed minor styling
+
 import os
 import re
 import six
@@ -18,7 +23,6 @@ from routes import Mapper
 from http.server import BaseHTTPRequestHandler
 
 env = jinja2.Environment(extensions=[])
-
 
 FILETYPES = {
     '.a': 'application/octet-stream',
@@ -164,10 +168,6 @@ class Headers:
         ["X-Content-Type-Options", "nosniff"],
     ]
 
-    APIHeaders = [
-        ["Access-Control-Allow-Origin", "*"],
-    ]
-
     FileHeaders = [
         ["Access-Control-Allow-Headers", "Content-Disposition"],
         ["Access-Control-Allow-Headers", "Content-Length"],
@@ -255,12 +255,11 @@ class Servio(BaseHTTPRequestHandler):
             function, kwargs = self.server.serve(self.path, self.command)
             if function:
                 function(self, **kwargs)
+
             else:
                 mname = 'do_' + self.command
                 if not hasattr(self, mname):
-                    self.send_error(
-                        HTTPStatus.NOT_IMPLEMENTED,
-                        "Unsupported method (%r)" % self.command)
+                    self.send_error("Not implemented.")
                     return
                 method = getattr(self, mname)
                 method()
@@ -281,11 +280,10 @@ class Servio(BaseHTTPRequestHandler):
             return True
         return False
 
-    def api(self, content):
-        self.send_response(200)
+    def api(self, code, content):
+        self.send_response(code)
         self.send_header('Content-type', "application/json")
         [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
-        [self.send_header(header[0], header[1]) for header in Headers.APIHeaders]
         self.end_headers()
         self.wfile.write(bytes(json.dumps(content).encode("utf-8")))
         return
@@ -294,7 +292,6 @@ class Servio(BaseHTTPRequestHandler):
         self.send_response(404)
         self.send_header('Content-type', "application/json")
         [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
-        [self.send_header(header[0], header[1]) for header in Headers.APIHeaders]
         self.end_headers()
         self.wfile.write(bytes(json.dumps({"Failure": "Generic Failure"}).encode("utf-8")))
 
@@ -330,6 +327,26 @@ class Servio(BaseHTTPRequestHandler):
 
         return
 
+    def download(self, name):
+        upperpath, bottompath = os.path.splitext(name)
+        mimetype = FILETYPES[bottompath]
+
+        self.send_response(200)
+        self.send_header('Content-type', mimetype)
+        [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
+        [self.send_header(header[0], header[1]) for header in Headers.SecurityHeaders]
+        [self.send_header(header[0], header[1]) for header in Headers.FileHeaders]
+        self.send_header("Content-Disposition", "attachment; filename={0}".format(name))
+
+        with open("files/"+name, 'rb') as fh:
+            content = gzipencode(fh.read())
+            self.send_header("Content-length", str(len(str(content))))
+            self.send_header("Content-Encoding", "gzip")
+            self.end_headers()
+            self.wfile.write(bytes(content))
+            self.wfile.flush()
+        return
+
     def error404(self):
         self.send_response(404)
         self.send_header('Content-type', "text/html")
@@ -351,6 +368,9 @@ class Servio(BaseHTTPRequestHandler):
         if not path.endswith(".jinja"):
             path += ".jinja"
 
+        if not path.startswith("/templates/"):
+            path = "templates"+path
+
         if context:
             env.globals.update(context)
 
@@ -361,9 +381,7 @@ class Servio(BaseHTTPRequestHandler):
         self.send_header('Content-type', "text/html")
         self.send_header("Content-Encoding", "gzip")
 
-        print("templates/"+path)
-
-        with open("templates/"+path, "rb") as fh:
+        with open(path, "rb") as fh:
             template = env.from_string(fh.read().decode('utf-8')).render().encode('utf-8')
 
         self.send_header("Content-length", str(len(str(template))))
@@ -389,10 +407,23 @@ class Servio(BaseHTTPRequestHandler):
 
         return
 
+    def do_OPTIONS(self):
+        self.send_response(200, "ok")
+
+        [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
+        [self.send_header(header[0], header[1]) for header in Headers.SecurityHeaders]
+        [self.send_header(header[0], header[1]) for header in Headers.FileHeaders]
+
+        self.end_headers()
+        return
+
     def do_POST(self):
         self.error404()
 
     def do_DELETE(self):
+        self.error404()
+
+    def do_PUUT(self):
         self.error404()
 
 class ServioQL:

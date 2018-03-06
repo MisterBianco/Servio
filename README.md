@@ -40,6 +40,10 @@ The server supports:
 + HTML with the: srv.html("_PATH_TO\_FILE_")
 + Templates with: srv.tempalte("_PATH_TO\_TEMPLATE_")
 
+The server also:
++ automatically handles preflight requests
++ 
+
 ---
 SQLITE3
 --
