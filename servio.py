@@ -163,20 +163,17 @@ class Headers:
     ]
 
     SecurityHeaders = [
-        ["X-Frame-Options", "SAMEORIGIN"],
         ["X-XSS-Protection", "1"],
+        ["X-Frame-Options", "SAMEORIGIN"],
         ["X-Content-Type-Options", "nosniff"],
     ]
 
     FileHeaders = [
         ["Access-Control-Allow-Headers", "Content-Disposition"],
         ["Access-Control-Allow-Headers", "Content-Length"],
-        ["Access-Control-Allow-Headers", "Filename"],
     ]
 
 class HTTPServio(socketserver.TCPServer):
-
-    allow_reuse_address = 1    # Seems to make sense in testing environment
 
     def __init__(self, *args):
         self.map = Mapper()
@@ -189,26 +186,23 @@ class HTTPServio(socketserver.TCPServer):
             return f
         return decorator
 
+    def cache(self, path):
+        pass
+
     def get_route_match(self, path, command):
         environ = {
             'PATH_INFO': path,
-            'REQUEST_METHOD': command
-        }
+            'REQUEST_METHOD': command}
 
         resource = self.map.match(environ=environ)
         if resource:
             return resource, resource['controller']
 
-        return None
+        return None, None
 
     def serve(self, path, command):
-        route_match = self.get_route_match(path, command)
-
-        if route_match:
-            kwargs, view_function = route_match
-            return view_function, kwargs
-        else:
-            return None, None
+        controller, resource = self.get_route_match(path, command)
+        return resource, controller
 
     def server_bind(self):
         """Override server_bind to store the server name."""
@@ -217,8 +211,8 @@ class HTTPServio(socketserver.TCPServer):
             host, port = self.server_address[:2]
             self.server_name = socket.getfqdn(host)
             self.server_port = port
-        except OSERROR:
-            print("Address in use")
+        except Exception as e:
+            print(e)
             sys.exit(0)
 
     def run(self):
@@ -231,8 +225,25 @@ class HTTPServio(socketserver.TCPServer):
 class Servio(BaseHTTPRequestHandler):
 
     def __init__(self, request, client_address, server):
+        self.server_version = "Servio 1.0.0"
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
         return
+
+    def log_message(self, format, *args):
+        try:
+            print("["+time.asctime()+"] {0}:[{3}] {1} -> {2}".format(
+                self.command,
+                self.client_address[0],
+                self.headers["User-Agent"],
+                self.path)
+            )
+        except:
+            pass
+        return
+
+    def version_string(self):
+        return self.server_version
+
 
     def handle_one_request(self):
         try:
@@ -390,6 +401,16 @@ class Servio(BaseHTTPRequestHandler):
         self.wfile.write(gzipencode(bytes(template)))
         self.wfile.flush()
 
+    def do_OPTIONS(self):
+        self.send_response(200, "ok")
+
+        [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
+        [self.send_header(header[0], header[1]) for header in Headers.SecurityHeaders]
+        [self.send_header(header[0], header[1]) for header in Headers.FileHeaders]
+
+        self.end_headers()
+        return
+
     def do_GET(self):
         if self.isFilePath(self.path):
 
@@ -405,16 +426,6 @@ class Servio(BaseHTTPRequestHandler):
             else:
                 self.error404()
 
-        return
-
-    def do_OPTIONS(self):
-        self.send_response(200, "ok")
-
-        [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
-        [self.send_header(header[0], header[1]) for header in Headers.SecurityHeaders]
-        [self.send_header(header[0], header[1]) for header in Headers.FileHeaders]
-
-        self.end_headers()
         return
 
     def do_POST(self):
