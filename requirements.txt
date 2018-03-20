@@ -1,5 +1,4 @@
 routes
 tabulate
-gzip
 six
 jinja2

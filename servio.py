@@ -423,7 +423,7 @@ class Servio(BaseHTTPRequestHandler):
     def do_DELETE(self):
         self.error404()
 
-    def do_PUUT(self):
+    def do_PUT(self):
         self.error404()
 
 class ServioQL:
