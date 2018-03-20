@@ -85,7 +85,7 @@ class HTTPServio(socketserver.TCPServer):
 class Servio(BaseHTTPRequestHandler):
 
     def __init__(self, request, client_address, server):
-        self.server_version = "Resvio/1.0.0"
+        self.server_version = "Resvio 1.0.0"
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
         return
 
