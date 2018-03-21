@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from RESvio import *
+from servio import *
 
-app = HTTPServio(('0.0.0.0', 8081), Servio)
+app = HTTPServio(('0.0.0.0', 8080), Servio)
 
-@app.route("/", methods=["GET"])
+@app.route("/get", methods=["GET"])
 def index(srv, **kwargs):
     srv.api(200, "GET")
     return
 
-@app.route("/", methods=["POST"])
+@app.route("/post", methods=["POST"])
 def index(srv, **kwargs):
     srv.api(200, "POST")
     return

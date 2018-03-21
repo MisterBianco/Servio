@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Fixed template url's
-# Fixed api to accept code to return a 201 for post request
-# Added requirements.txt
-# Fixed minor styling
+# Fixed the PUUT method :)
 
 import os
 import re
@@ -14,15 +11,12 @@ import gzip
 import json
 import time
 import socket
-import jinja2
 import sqlite3
 import socketserver
 
 from routes import Mapper
-# from tabulate import tabulate
+from tabulate import tabulate
 from http.server import BaseHTTPRequestHandler
-
-env = jinja2.Environment(extensions=[])
 
 FILETYPES = {
     '.a': 'application/octet-stream',
@@ -177,6 +171,7 @@ class HTTPServio(socketserver.TCPServer):
 
     def __init__(self, *args):
         self.map = Mapper()
+        self.allow_reuse_address = True
         print("["+time.asctime()+"] Server Starts "+''.join(str(args[0])))
         socketserver.TCPServer.__init__(self, *args)
 
@@ -186,26 +181,18 @@ class HTTPServio(socketserver.TCPServer):
             return f
         return decorator
 
-    def cache(self, path):
-        pass
-
-    def get_route_match(self, path, command):
+    def serve(self, path, command):
         environ = {
             'PATH_INFO': path,
             'REQUEST_METHOD': command}
 
         resource = self.map.match(environ=environ)
         if resource:
-            return resource, resource['controller']
+            return resource['controller'], resource
 
         return None, None
 
-    def serve(self, path, command):
-        controller, resource = self.get_route_match(path, command)
-        return resource, controller
-
     def server_bind(self):
-        """Override server_bind to store the server name."""
         try:
             socketserver.TCPServer.server_bind(self)
             host, port = self.server_address[:2]
@@ -217,33 +204,36 @@ class HTTPServio(socketserver.TCPServer):
 
     def run(self):
         try:
-            self.serve_forever()
+
+            self.serve_forever(poll_interval=2)
         except KeyboardInterrupt:
-            pass
+            print("\r["+str(time.asctime())+"] Server Exits...")
+            self.shutdown()
+            self.server_close()
+
         return
 
 class Servio(BaseHTTPRequestHandler):
 
     def __init__(self, request, client_address, server):
-        self.server_version = "Servio 1.0.0"
+        self.server_version = "Servio 1.0.5"
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
         return
 
     def log_message(self, format, *args):
         try:
-            print("["+time.asctime()+"] {0}:[{3}] {1} -> {2}".format(
-                self.command,
+            print(tabulate( [[self.command,
                 self.client_address[0],
                 self.headers["User-Agent"],
-                self.path)
+                self.path]], tablefmt="presto" )
             )
         except:
             pass
+
         return
 
     def version_string(self):
         return self.server_version
-
 
     def handle_one_request(self):
         try:
@@ -270,7 +260,7 @@ class Servio(BaseHTTPRequestHandler):
             else:
                 mname = 'do_' + self.command
                 if not hasattr(self, mname):
-                    self.send_error("Not implemented.")
+                    self.send_error(400)
                     return
                 method = getattr(self, mname)
                 method()
@@ -284,7 +274,7 @@ class Servio(BaseHTTPRequestHandler):
 
     def isFilePath(self, content):
         if content == "/":
-            content = "/index.html"
+            self.path = "index.html"
             return True
 
         if os.path.isfile(os.curdir + os.sep + content):
@@ -306,14 +296,14 @@ class Servio(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(bytes(json.dumps({"Failure": "Generic Failure"}).encode("utf-8")))
 
-    def html(self, content="<h1>Test</h1>"):
+    def html(self, content="index.html"):
         self.send_response(200)
 
         [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
         [self.send_header(header[0], header[1]) for header in Headers.SecurityHeaders]
         [self.send_header(header[0], header[1]) for header in Headers.FileHeaders]
 
-        if self.isFilePath(content) and content != "/":
+        if self.isFilePath(content):
             upperpath, bottompath = os.path.splitext(content)
 
             try:
@@ -329,7 +319,7 @@ class Servio(BaseHTTPRequestHandler):
             mimetype = "text/html"
 
         self.send_header('Content-type', mimetype)
-        self.send_header("Content-length", str(len(str(content))))
+        self.send_header("Content-length", str(len(content)))
         self.send_header("Content-Encoding", "gzip")
 
         self.end_headers()
@@ -374,33 +364,6 @@ class Servio(BaseHTTPRequestHandler):
 
         return
 
-    def template(self, path, context):
-        self.send_response(200)
-        if not path.endswith(".jinja"):
-            path += ".jinja"
-
-        if not path.startswith("/templates/"):
-            path = "templates"+path
-
-        if context:
-            env.globals.update(context)
-
-        [self.send_header(header[0], header[1]) for header in Headers.BaseHeaders]
-        [self.send_header(header[0], header[1]) for header in Headers.SecurityHeaders]
-        [self.send_header(header[0], header[1]) for header in Headers.FileHeaders]
-
-        self.send_header('Content-type', "text/html")
-        self.send_header("Content-Encoding", "gzip")
-
-        with open(path, "rb") as fh:
-            template = env.from_string(fh.read().decode('utf-8')).render().encode('utf-8')
-
-        self.send_header("Content-length", str(len(str(template))))
-        self.end_headers()
-
-        self.wfile.write(gzipencode(bytes(template)))
-        self.wfile.flush()
-
     def do_OPTIONS(self):
         self.send_response(200, "ok")
 
@@ -414,17 +377,10 @@ class Servio(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.isFilePath(self.path):
 
-            if self.path.endswith(".jinja"):
-                self.template(self.path, None)
-            else:
-                self.html(self.path)
+            self.html(self.path)
 
         else:
-
-            if self.path.endswith(".jinja"):
-                self.template(self.path, None)
-            else:
-                self.error404()
+            self.error404()
 
         return
 
